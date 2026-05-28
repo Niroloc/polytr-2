@@ -1,0 +1,14 @@
+.git
+.gitignore
+.github
+.idea
+.vscode
+.claude
+data/
+logs/
+*.bin
+*.log
+Dockerfile
+docker-compose.yml
+.env
+.env.local
