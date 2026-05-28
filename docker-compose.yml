@@ -1,7 +1,7 @@
 # polytr — docker compose deployment
 #
 # Default (bot only, paper mode):
-#   cp .env.example .env  &&  edit POLY_TOKEN  &&  docker compose up -d
+#   cp .env.example .env  &&  edit thresholds  &&  docker compose up -d
 #
 # With replay UI on :8080:
 #   docker compose --profile replay up -d
@@ -23,7 +23,6 @@ services:
       - bot
       - --data=/data
       - --paper=${PAPER:-true}
-      - --poly-token=${POLY_TOKEN:-}
       - --strike-step=${STRIKE_STEP:-100}
       - --strike-minutes=${STRIKE_MINUTES:-5}
       - --entry-edge=${ENTRY_EDGE:-0.03}

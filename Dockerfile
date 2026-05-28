@@ -5,7 +5,7 @@
 #   2) runtime — minimal Alpine with CA bundle (TLS for WSS) and tzdata
 #
 # Build:   docker build -t polytr:latest .
-# Run bot: docker run --rm -v polytr-data:/data polytr:latest bot --paper --poly-token <TOKEN>
+# Run bot: docker run --rm -v polytr-data:/data polytr:latest bot --paper
 # Replay:  docker run --rm -p 8080:8080 -v polytr-data:/data polytr:latest replay --listen :8080
 
 FROM golang:1.23-alpine AS builder

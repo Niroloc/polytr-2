@@ -58,7 +58,7 @@ go build ./...
 go test ./...
 
 # run the live bot in paper-trading mode (auto-discovers the active
-# Polymarket BTC 5m market via gamma-api; pass --poly-token to override)
+# Polymarket BTC 5m market via gamma-api on startup and every 5m rollover)
 go run ./cmd/bot \
   --data ./data \
   --paper \
@@ -82,8 +82,7 @@ go run ./cmd/replay \
 |---|---|---|
 | `--data` | `./data` | Tick log root dir |
 | `--paper` | `true` | Paper-trading client; flip to `false` only after wiring a live `exec.VenueClient` |
-| `--poly-token` | _empty_ | CLOB ERC-1155 tokenID of the active YES outcome. Optional — when empty, the bot auto-discovers the current BTC 5m market via gamma-api on startup and every 5m rollover. |
-| `--poly-discover-interval` | `60s` | Safety-net poll cadence for gamma-api auto-discovery (no-op when `--poly-token` is set). |
+| `--poly-discover-interval` | `60s` | Safety-net poll cadence for gamma-api auto-discovery. |
 | `--strike-step` | `100` | USD step for strike rounding |
 | `--strike-minutes` | `5` | Window length |
 | `--entry-edge` | `0.03` | Probability-points needed to enter |
@@ -151,7 +150,7 @@ The stack ships with two services sharing a named volume:
 
 ```bash
 cp .env.example .env
-$EDITOR .env                          # set POLY_TOKEN, tune thresholds
+$EDITOR .env                          # tune thresholds, paper-mode toggle
 mkdir -p logs && sudo chown 10001:10001 logs   # see "Host logs" below
 docker compose up -d                  # builds the image, starts the bot
 docker compose logs -f bot            # follow live FP / signal output via docker
