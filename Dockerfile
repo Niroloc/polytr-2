@@ -32,9 +32,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 FROM alpine:3.20
 
 RUN apk add --no-cache ca-certificates tzdata && \
-    addgroup -g 10001 polytr && \
-    adduser -D -u 10001 -G polytr polytr && \
-    mkdir -p /data /logs && chown -R polytr:polytr /data /logs
+    mkdir -p /data /logs
 
 COPY --from=builder /out/bot    /usr/local/bin/bot
 COPY --from=builder /out/replay /usr/local/bin/replay
@@ -49,7 +47,9 @@ exec "/usr/local/bin/${cmd}" "$@"
 EOF
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-USER polytr
+# Running as root inside the container. Single-user dev/paper-trading
+# context, no untrusted input — root file ownership on bind-mounted
+# ./logs is the only side effect (use `sudo` to clean up host-side).
 WORKDIR /data
 VOLUME ["/data", "/logs"]
 EXPOSE 8080

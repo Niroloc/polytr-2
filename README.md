@@ -151,7 +151,7 @@ The stack ships with two services sharing a named volume:
 ```bash
 cp .env.example .env
 $EDITOR .env                          # tune thresholds, paper-mode toggle
-mkdir -p logs && sudo chown 10001:10001 logs   # see "Host logs" below
+mkdir -p logs                         # see "Host logs" below
 docker compose up -d                  # builds the image, starts the bot
 docker compose logs -f bot            # follow live FP / signal output via docker
 tail -f logs/bot.log                  # ...or directly from the host filesystem
@@ -204,12 +204,13 @@ the host directory `HOST_LOGS_DIR` (default `./logs`).
 └── replay.log    ← replay simulator output
 ```
 
-The container runs as **uid/gid 10001** (`polytr`), so the bind-mount target
-must be writable by that uid. The simplest one-time setup on Linux:
+The container runs as **root**. No upfront `chown` needed; bind-mount target
+just has to exist. Side effect: log files appear `root:root` on the host, so
+cleanup needs `sudo rm` / `sudo tail`. The bot does write the same lines to
+`docker compose logs -f bot` if you'd rather avoid the host file entirely.
 
 ```bash
 mkdir -p logs
-sudo chown 10001:10001 logs
 ```
 
 To park logs somewhere else (e.g. `/var/log/polytr`), set `HOST_LOGS_DIR` in
