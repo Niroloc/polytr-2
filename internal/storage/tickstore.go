@@ -29,16 +29,17 @@ import (
 )
 
 const (
-	retention      = 7 * 24 * time.Hour
-	flushInterval  = 250 * time.Millisecond
-	janitorPeriod  = 1 * time.Hour
-	writeChanDepth = 1 << 16
+	DefaultRetention = 7 * 24 * time.Hour
+	flushInterval    = 250 * time.Millisecond
+	janitorPeriod    = 1 * time.Hour
+	writeChanDepth   = 1 << 16
 )
 
 // TickStore is a concurrent, hour-rotated binary appender.
 type TickStore struct {
-	root string
-	in   chan types.TickData
+	root      string
+	retention time.Duration // ≤0 disables the janitor entirely (keep forever)
+	in        chan types.TickData
 
 	mu      sync.Mutex
 	curHour time.Time
@@ -49,18 +50,27 @@ type TickStore struct {
 	closed chan struct{}
 }
 
-func Open(root string) (*TickStore, error) {
+// Open creates a TickStore rooted at `root` with the given retention. Pass
+// a non-positive retention (0, -1, etc.) to disable the janitor — useful for
+// long-horizon historical analysis where you want every collected tick kept.
+func Open(root string, retention time.Duration) (*TickStore, error) {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return nil, err
 	}
 	ts := &TickStore{
-		root:   root,
-		in:     make(chan types.TickData, writeChanDepth),
-		closed: make(chan struct{}),
+		root:      root,
+		retention: retention,
+		in:        make(chan types.TickData, writeChanDepth),
+		closed:    make(chan struct{}),
 	}
-	ts.wg.Add(2)
-	go ts.writerLoop()
-	go ts.janitorLoop()
+	if retention > 0 {
+		ts.wg.Add(2)
+		go ts.writerLoop()
+		go ts.janitorLoop()
+	} else {
+		ts.wg.Add(1)
+		go ts.writerLoop()
+	}
 	return ts, nil
 }
 
@@ -170,7 +180,7 @@ func (ts *TickStore) janitorLoop() {
 }
 
 func (ts *TickStore) sweep() {
-	cutoff := time.Now().UTC().Add(-retention).Truncate(24 * time.Hour)
+	cutoff := time.Now().UTC().Add(-ts.retention).Truncate(24 * time.Hour)
 	entries, err := os.ReadDir(ts.root)
 	if err != nil {
 		return

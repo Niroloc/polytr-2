@@ -81,6 +81,7 @@ go run ./cmd/replay \
 |---|---|---|
 | `--data` | `./data` | Tick log root dir |
 | `--paper` | `true` | Paper-trading client; flip to `false` only after wiring a live `exec.VenueClient` |
+| `--retention` | `168h` | Tick log retention. Set `0` or negative to disable the janitor (keep full history). |
 | `--poly-discover-interval` | `60s` | Safety-net poll cadence for gamma-api auto-discovery. |
 | `--strike-minutes` | `5` | Window length |
 | `--entry-edge` | `0.03` | Probability-points needed to enter |
@@ -95,12 +96,16 @@ go run ./cmd/replay \
 |---|---|---|
 | `--data` | `./data` | Tick log root |
 | `--from` / `--to` | last 24h | RFC3339 timestamps |
+| `--live` | `false` | When set (or `--to` is empty), the engine keeps consuming new ticks as the running bot writes them. The dashboard polls `/api/samples?since=<lastT>` every 2s and appends new points to the chart. |
 | `--listen` | `:8080` | HTTP listen address |
 | `--stride` | `50` | Emit one sample per N ticks (keeps the UI payload small) |
 
 The dashboard plots Binance mid + strike (left axis, USD) against Polymarket
 mid, `Final_FP`, and the 5 component FPs (right axis, probability). Pan/zoom
-with the mouse; click "reset zoom" to re-fit.
+with the mouse; click "reset zoom" to re-fit. Every line has a toggle chip
+above the chart — clicks persist to `localStorage` so your visibility choices
+survive page reload. Add new lines by appending to `DATASETS` in the embedded
+HTML; toggles regenerate automatically.
 
 ## Docker
 

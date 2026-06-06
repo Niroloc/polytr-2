@@ -39,6 +39,7 @@ import (
 func main() {
 	var (
 		dataDir          = flag.String("data", "./data", "binary tick log root")
+		retention        = flag.Duration("retention", storage.DefaultRetention, "tick log retention; ≤0 disables the janitor (keep all history)")
 		polyDiscoverInt  = flag.Duration("poly-discover-interval", 60*time.Second, "safety-net auto-discovery poll cadence")
 		strikeMinutes    = flag.Int("strike-minutes", 5, "binary window length in minutes")
 		entryEdge        = flag.Float64("entry-edge", 0.03, "min FP-vs-market edge to enter (probability)")
@@ -62,11 +63,16 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ts, err := storage.Open(*dataDir)
+	ts, err := storage.Open(*dataDir, *retention)
 	if err != nil {
 		log.Fatalf("storage open: %v", err)
 	}
 	defer ts.Close()
+	if *retention <= 0 {
+		log.Printf("[storage] retention disabled — keeping all tick history (use --retention=168h to re-enable 7d pruning)")
+	} else {
+		log.Printf("[storage] retention=%s (older day-directories pruned hourly)", *retention)
+	}
 
 	bnBook := book.New(types.SourceBinance)
 	pmBook := book.New(types.SourcePolymarket)

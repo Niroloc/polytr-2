@@ -23,6 +23,7 @@ services:
       - bot
       - --data=/data
       - --paper=${PAPER:-true}
+      - --retention=${RETENTION:-168h}
       - --strike-minutes=${STRIKE_MINUTES:-5}
       - --entry-edge=${ENTRY_EDGE:-0.03}
       - --exit-edge=${EXIT_EDGE:-0.005}
@@ -69,6 +70,7 @@ services:
       - --listen=:8080
       - --from=${REPLAY_FROM:-}
       - --to=${REPLAY_TO:-}
+      - --live=${REPLAY_LIVE:-true}
       - --stride=${REPLAY_STRIDE:-50}
       - --strike-minutes=${STRIKE_MINUTES:-5}
       - --entry-edge=${ENTRY_EDGE:-0.03}
