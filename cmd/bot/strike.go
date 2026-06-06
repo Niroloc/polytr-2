@@ -1,15 +1,17 @@
 package main
 
 import (
-	"math"
 	"sync"
 	"time"
 )
 
-// strikeWindow is the active BTC 5m bet window. The strike is set at window
-// open as the round-number nearest the then-current BTC mid (Polymarket
-// markets use the nearest $100 or $250 step depending on contract; we use
-// $100 as a sane default, configurable via cfg).
+// strikeWindow is the active BTC 5m bet window. Polymarket's BTC up/down 5m
+// markets resolve "Up" iff Chainlink BTC/USD at window end ≥ Chainlink
+// BTC/USD at window start — so Strike is just the spot price recorded at the
+// instant the window opens, NOT a rounded round-number. We snapshot Binance
+// mid at window open as a proxy for the Chainlink start-price (within ~$5-10
+// on a 5m horizon). When Chainlink Data Streams credentials are wired in,
+// the proxy gets swapped for the authoritative oracle reading.
 type strikeWindow struct {
 	Start  time.Time
 	End    time.Time
@@ -23,13 +25,12 @@ type strikeWindow struct {
 type strikeScheduler struct {
 	mu        sync.RWMutex
 	current   strikeWindow
-	stepUSD   float64 // strike rounding step
-	durMin    int     // window duration in minutes
+	durMin    int // window duration in minutes
 	listeners []func(strikeWindow)
 }
 
-func newStrikeScheduler(stepUSD float64, durMin int) *strikeScheduler {
-	return &strikeScheduler{stepUSD: stepUSD, durMin: durMin}
+func newStrikeScheduler(durMin int) *strikeScheduler {
+	return &strikeScheduler{durMin: durMin}
 }
 
 func (s *strikeScheduler) Current() strikeWindow {
@@ -48,12 +49,11 @@ func (s *strikeScheduler) Tick(now time.Time, spot float64) bool {
 		return false
 	}
 	start := now.Truncate(time.Duration(s.durMin) * time.Minute)
-	strike := math.Round(spot/s.stepUSD) * s.stepUSD
 	s.current = strikeWindow{
 		Start:     start,
 		End:       start.Add(time.Duration(s.durMin) * time.Minute),
-		Strike:    strike,
-		Direction: 1, // default to "above"
+		Strike:    spot, // unrounded — see strikeWindow doc comment for rationale
+		Direction: 1,    // default to "above"
 	}
 	w := s.current
 	for _, fn := range s.listeners {

@@ -8,11 +8,6 @@ import (
 	"github.com/cicn/polytr/internal/ingest"
 )
 
-// onSwapFn is invoked once per real token swap (i.e. when pm.SetToken returns
-// true). The marker write happens here, not on every successful resolve, so we
-// don't spam duplicates from concurrent paths.
-type onSwapFn func(windowStart time.Time, tokenID string)
-
 // resolveAndSet tries up to `attempts` times (1s apart) to resolve the gamma
 // tokenID for the 5m window starting at `windowStart`, then calls SetToken if
 // the result differs from what's already subscribed. Failures are logged once
@@ -23,7 +18,6 @@ func resolveAndSet(
 	pm *ingest.PolymarketIngestor,
 	windowStart time.Time,
 	attempts int,
-	onSwap onSwapFn,
 ) {
 	var lastErr error
 	for i := 0; i < attempts; i++ {
@@ -34,9 +28,6 @@ func resolveAndSet(
 		if err == nil {
 			if pm.SetToken(tok) {
 				log.Printf("[discover] window=%s token=%.16s…", windowStart.UTC().Format(time.RFC3339), tok)
-				if onSwap != nil {
-					onSwap(windowStart, tok)
-				}
 			}
 			return
 		}
@@ -78,11 +69,10 @@ func runDiscovery(
 	scheduler *strikeScheduler,
 	durMin int,
 	interval time.Duration,
-	onSwap onSwapFn,
 ) {
 	// Path 2: rollover listener — runs in its own goroutine (scheduler fires it that way).
 	scheduler.OnNewWindow(func(w strikeWindow) {
-		resolveAndSet(ctx, gamma, pm, w.Start, 30, onSwap)
+		resolveAndSet(ctx, gamma, pm, w.Start, 30)
 	})
 
 	// Path 1: bootstrap as soon as the scheduler has a window.
@@ -95,7 +85,7 @@ func runDiscovery(
 				return
 			case <-t.C:
 				if w := scheduler.Current(); !w.Start.IsZero() {
-					resolveAndSet(ctx, gamma, pm, w.Start, 30, onSwap)
+					resolveAndSet(ctx, gamma, pm, w.Start, 30)
 					return
 				}
 			}
@@ -113,7 +103,7 @@ func runDiscovery(
 				case <-ctx.Done():
 					return
 				case now := <-t.C:
-					resolveAndSet(ctx, gamma, pm, now.UTC().Truncate(d), 1, onSwap)
+					resolveAndSet(ctx, gamma, pm, now.UTC().Truncate(d), 1)
 				}
 			}
 		}()
@@ -130,7 +120,7 @@ func runDiscovery(
 			case <-ctx.Done():
 				return
 			case <-time.After(next.Sub(now)):
-				resolveAndSet(ctx, gamma, pm, next, 30, onSwap)
+				resolveAndSet(ctx, gamma, pm, next, 30)
 			}
 		}
 	}()

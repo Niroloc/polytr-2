@@ -49,7 +49,6 @@ func main() {
 		fromStr  = flag.String("from", "", "start time RFC3339 (default: 24h ago)")
 		toStr    = flag.String("to", "", "end time RFC3339 (default: now)")
 		listen   = flag.String("listen", ":8080", "HTTP listen address")
-		strikeStep = flag.Float64("strike-step", 100.0, "strike rounding step USD")
 		strikeMin  = flag.Int("strike-minutes", 5, "binary window minutes")
 		entryEdge  = flag.Float64("entry-edge", 0.03, "")
 		exitEdge   = flag.Float64("exit-edge", 0.005, "")
@@ -84,7 +83,7 @@ func main() {
 	}
 
 	log.Printf("replay: data=%s from=%s to=%s", *dataDir, from, to)
-	samples, err := runReplay(*dataDir, from, to, *strikeStep, *strikeMin, signal.Config{
+	samples, err := runReplay(*dataDir, from, to, *strikeMin, signal.Config{
 		EntryEdge: *entryEdge, ExitEdge: *exitEdge, MinSeconds: *minSecs,
 	}, *stride)
 	if err != nil {
@@ -105,7 +104,7 @@ func main() {
 	}
 }
 
-func runReplay(root string, from, to time.Time, strikeStep float64, strikeMin int, sigCfg signal.Config, stride int) ([]sample, error) {
+func runReplay(root string, from, to time.Time, strikeMin int, sigCfg signal.Config, stride int) ([]sample, error) {
 	r, err := storage.NewReader(root, from, to)
 	if err != nil {
 		return nil, err
@@ -174,7 +173,7 @@ func runReplay(root string, from, to time.Time, strikeStep float64, strikeMin in
 			win = winState{
 				start:  start,
 				end:    start.Add(time.Duration(strikeMin) * time.Minute),
-				strike: roundTo(mid, strikeStep),
+				strike: mid, // unrounded — see strikeWindow in cmd/bot/strike.go
 			}
 		}
 
@@ -209,13 +208,6 @@ func runReplay(root string, from, to time.Time, strikeStep float64, strikeMin in
 		})
 	}
 	return out, nil
-}
-
-func roundTo(x, step float64) float64 {
-	if step <= 0 {
-		return x
-	}
-	return float64(int(x/step+0.5)) * step
 }
 
 func clamp(x, lo, hi float64) float64 {

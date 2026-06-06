@@ -62,7 +62,6 @@ go test ./...
 go run ./cmd/bot \
   --data ./data \
   --paper \
-  --strike-step 100 \
   --strike-minutes 5 \
   --entry-edge 0.03 \
   --exit-edge 0.005
@@ -83,7 +82,6 @@ go run ./cmd/replay \
 | `--data` | `./data` | Tick log root dir |
 | `--paper` | `true` | Paper-trading client; flip to `false` only after wiring a live `exec.VenueClient` |
 | `--poly-discover-interval` | `60s` | Safety-net poll cadence for gamma-api auto-discovery. |
-| `--strike-step` | `100` | USD step for strike rounding |
 | `--strike-minutes` | `5` | Window length |
 | `--entry-edge` | `0.03` | Probability-points needed to enter |
 | `--exit-edge` | `0.005` | Probability-points to flatten |

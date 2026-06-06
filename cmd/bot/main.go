@@ -40,7 +40,6 @@ func main() {
 	var (
 		dataDir          = flag.String("data", "./data", "binary tick log root")
 		polyDiscoverInt  = flag.Duration("poly-discover-interval", 60*time.Second, "safety-net auto-discovery poll cadence")
-		strikeStep       = flag.Float64("strike-step", 100.0, "USD step for strike rounding")
 		strikeMinutes    = flag.Int("strike-minutes", 5, "binary window length in minutes")
 		entryEdge        = flag.Float64("entry-edge", 0.03, "min FP-vs-market edge to enter (probability)")
 		exitEdge         = flag.Float64("exit-edge", 0.005, "edge under which to flatten")
@@ -99,7 +98,7 @@ func main() {
 		MinSeconds: *minSeconds,
 	}
 
-	scheduler := newStrikeScheduler(*strikeStep, *strikeMinutes)
+	scheduler := newStrikeScheduler(*strikeMinutes)
 	settle := newSettlementTracker()
 
 	var venueClient exec.VenueClient
@@ -118,29 +117,28 @@ func main() {
 		MaxQueueAge:     30 * time.Second,
 	}, venueClient, pmBook)
 
+	// Strike marker written at window open with the authoritative strike
+	// (Binance mid snapshotted at windowStart — approximates Chainlink
+	// BTC/USD until DS credentials wire in). Backtests scan for TickStrike
+	// records to know each window's exact K and direction; everything
+	// between two markers belongs to the most-recent marker's window.
+	// Side encodes direction (+1 = Up, gamma always resolves to Up today;
+	// flip if we ever subscribe to Down).
 	scheduler.OnNewWindow(func(w strikeWindow) {
 		log.Printf("[strike] window opened start=%s end=%s strike=%.2f",
 			w.Start.Format(time.RFC3339), w.End.Format(time.RFC3339), w.Strike)
 		mgr.OnSettle()
-	})
-
-	// Marker write on every real Polymarket token swap. Side encodes the
-	// direction the subscribed token represents (gamma currently always
-	// resolves to "Up" → +1; switch to -1 here if we ever subscribe to Down).
-	// That's all backtests need: window boundary is derived from the marker's
-	// timestamp truncated to the 5m window; ticks between two markers belong
-	// to the most-recent marker's direction.
-	onTokenSwap := func(_ time.Time, _ string) {
 		ts.Write(types.TickData{
-			Timestamp: time.Now().UnixNano(),
+			Timestamp: w.Start.UnixNano(),
 			Source:    types.SourcePolymarket,
 			Type:      types.TickStrike,
+			Price:     w.Strike,
 			Side:      types.SideBuy,
 		})
-	}
+	})
 
 	log.Printf("[discover] gamma-api auto-discovery enabled (safety-net interval=%s)", *polyDiscoverInt)
-	runDiscovery(ctx, ingest.NewGammaClient(), pmIngestor, scheduler, *strikeMinutes, *polyDiscoverInt, onTokenSwap)
+	runDiscovery(ctx, ingest.NewGammaClient(), pmIngestor, scheduler, *strikeMinutes, *polyDiscoverInt)
 
 	go func() {
 		t := time.NewTicker(100 * time.Millisecond)
