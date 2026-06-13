@@ -353,19 +353,39 @@ const indexHTML = `<!doctype html>
   .dot { display:inline-block; width:6px; height:6px; border-radius:50%; vertical-align:middle; margin-right:4px }
   .dot.live { background:#5f5; box-shadow:0 0 6px #5f5 }
   .dot.bounded { background:#888 }
+  #banner { display:none; padding:10px 12px; margin-bottom:8px; border-radius:4px; font-size:12px; line-height:1.5 }
+  #banner.err  { display:block; background:#3a1414; border:1px solid #832; color:#fbb }
+  #banner.warn { display:block; background:#33300f; border:1px solid #875; color:#fe9 }
 </style>
 </head><body>
 <h1>polytr — FP committee vs Polymarket BTC 5m</h1>
+<div id="banner"></div>
 <div class="row">
-  <button onclick="chart.resetZoom()">reset zoom</button>
-  <button onclick="toggleAll(true)">all on</button>
-  <button onclick="toggleAll(false)">all off</button>
+  <button id="btn-reset">reset zoom</button>
+  <button id="btn-all-on">all on</button>
+  <button id="btn-all-off">all off</button>
   <span id="mode-indicator"></span>
   <span id="meta"></span>
 </div>
 <div class="toggles" id="toggles"></div>
 <div id="chart-wrap"><canvas id="chart"></canvas></div>
 <script>
+function showBanner(kind, html) {
+  const b = document.getElementById('banner');
+  b.className = kind;
+  b.innerHTML = html;
+}
+
+// Fail loudly if the CDN-hosted Chart.js didn't load (e.g. the host blocks
+// external CDNs) instead of throwing an opaque "Chart is not defined".
+if (typeof Chart === 'undefined') {
+  showBanner('err', '<b>Chart.js failed to load.</b> The chart library is served from ' +
+    'cdn.jsdelivr.net — this host appears unable to reach it. Check the browser ' +
+    'console / network tab. (If the box is behind a TLS-intercepting proxy, the CDN ' +
+    'request is likely being blocked the same way gamma-api was.)');
+  throw new Error('Chart.js unavailable');
+}
+
 const DATASETS = [
   {label:'Binance Mid (USD)', key:'bin',  color:'#5af', axis:'yUSD'},
   {label:'Strike (USD)',      key:'k',    color:'#888', axis:'yUSD'},
@@ -461,6 +481,26 @@ async function bootstrap() {
   });
   buildToggles();
   updateMeta();
+
+  // Wire buttons here (not inline onclick) so they always resolve the chart
+  // variable, regardless of how the browser scopes top-level let for inline handlers.
+  document.getElementById('btn-reset').addEventListener('click', () => chart.resetZoom());
+  document.getElementById('btn-all-on').addEventListener('click', () => toggleAll(true));
+  document.getElementById('btn-all-off').addEventListener('click', () => toggleAll(false));
+
+  // Empty-data state is the #1 "nothing shows up" cause: the chart renders
+  // but has no lines. Say so explicitly instead of leaving a blank canvas.
+  if (totalSamples === 0) {
+    if (mode === 'live') {
+      showBanner('warn', '<b>No tick data yet.</b> The chart is empty because the log has ' +
+        'no samples in range. If the bot is running, it may not be collecting ticks ' +
+        '(e.g. Binance/Polymarket WS can\'t connect). Lines will appear automatically ' +
+        'as data lands — this view is polling every 2s.');
+    } else {
+      showBanner('warn', '<b>No samples in the selected range.</b> Widen --from/--to, or ' +
+        'confirm the tick log actually has data for this window.');
+    }
+  }
 }
 
 function updateMeta() {
@@ -474,6 +514,7 @@ async function tick() {
     const res = await fetch('/api/samples?since=' + lastT);
     const data = await res.json();
     if (!data.length) return;
+    if (totalSamples === 0) document.getElementById('banner').className = ''; // clear "no data" warn
     for (const s of data) {
       chart.data.datasets.forEach(ds => {
         ds.data.push({x: s.t, y: s[ds._key]});
@@ -490,7 +531,10 @@ async function tick() {
 
 bootstrap().then(() => {
   if (mode === 'live') setInterval(tick, 2000);
-}).catch(err => document.body.innerHTML = '<pre>'+err+'</pre>');
+}).catch(err => {
+  console.error(err);
+  showBanner('err', '<b>Failed to initialise dashboard:</b> ' + (err && err.message ? err.message : err));
+});
 </script>
 </body></html>`
 
