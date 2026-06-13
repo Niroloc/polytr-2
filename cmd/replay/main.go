@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cicn/polytr/internal/book"
@@ -76,6 +77,8 @@ type engine struct {
 
 	samples []sample
 	lastTs  int64 // ns; next read starts at lastTs+1ns
+
+	bootstrapDone atomic.Bool // gates live tailing until the historical pass finishes
 }
 
 type winState struct {
@@ -95,6 +98,26 @@ func newEngine(root string, strikeMin, stride int, sigCfg signal.Config, from ti
 		committee: fpc.New(fpc.Weights{EV: 1, BS: 1, Imb: 1, Z: 1, KDE: 1}),
 		samples:   make([]sample, 0, 1<<16),
 		lastTs:    from.UnixNano() - 1,
+	}
+}
+
+// Bootstrap replays the historical window [from, to] in fixed-size chunks,
+// releasing the engine lock between chunks so the HTTP server stays responsive
+// and /api/samples can return progress as it accumulates. Runs in its own
+// goroutine; sets bootstrapDone when complete so live tailing can begin.
+func (e *engine) Bootstrap(from, to time.Time, chunk time.Duration) {
+	defer e.bootstrapDone.Store(true)
+	for cur := from; cur.Before(to); cur = cur.Add(chunk) {
+		end := cur.Add(chunk)
+		if end.After(to) {
+			end = to
+		}
+		// Advance keys its low bound off e.lastTs, so passing successive chunk
+		// ends walks the whole window; the lock is dropped after each chunk.
+		if err := e.Advance(end); err != nil {
+			log.Printf("replay: bootstrap chunk ending %s failed: %v", end.Format(time.RFC3339), err)
+			return
+		}
 	}
 }
 
@@ -203,6 +226,13 @@ func (e *engine) Advance(to time.Time) error {
 	return nil
 }
 
+// SampleCount returns the number of samples produced so far (lock-safe).
+func (e *engine) SampleCount() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return len(e.samples)
+}
+
 // Since returns samples with millisecond timestamp strictly greater than
 // `sinceMs`. Caller must NOT mutate the returned slice.
 func (e *engine) Since(sinceMs int64) []sample {
@@ -275,15 +305,23 @@ func main() {
 	eng := newEngine(*dataDir, *strikeMin, *stride, signal.Config{
 		EntryEdge: *entryEdge, ExitEdge: *exitEdge, MinSeconds: *minSecs,
 	}, from)
-	if err := eng.Advance(to); err != nil {
-		log.Fatalf("replay: %v", err)
-	}
-	log.Printf("replay: bootstrap generated %d samples", len(eng.samples))
+
+	// Bootstrap the historical window in the background so the HTTP server can
+	// start serving immediately. Without this, a large tick log would block
+	// ListenAndServe for minutes and the container reads as unhealthy / dead.
+	go func() {
+		start := time.Now()
+		eng.Bootstrap(from, to, time.Hour)
+		log.Printf("replay: bootstrap complete in %s (%d samples)", time.Since(start).Round(time.Millisecond), eng.SampleCount())
+	}()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", indexHandler)
 	mux.HandleFunc("/api/samples", func(w http.ResponseWriter, r *http.Request) {
-		if mode == "live" {
+		// Tail new ticks only once the historical pass is done — otherwise a
+		// live poll would jump the cursor to "now" and swallow the rest of the
+		// backlog in one locked read, defeating the chunked bootstrap.
+		if mode == "live" && eng.bootstrapDone.Load() {
 			if err := eng.Advance(time.Now().UTC()); err != nil {
 				log.Printf("replay: advance: %v", err)
 			}
@@ -301,9 +339,12 @@ func main() {
 	})
 	mux.HandleFunc("/api/mode", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"mode": mode})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"mode":      mode,
+			"bootstrap": eng.bootstrapDone.Load(),
+		})
 	})
-	log.Printf("serving on %s", *listen)
+	log.Printf("serving on %s (bootstrap running in background)", *listen)
 	if err := http.ListenAndServe(*listen, mux); err != nil {
 		log.Fatal(err)
 	}

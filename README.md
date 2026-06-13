@@ -107,6 +107,13 @@ above the chart — clicks persist to `localStorage` so your visibility choices
 survive page reload. Add new lines by appending to `DATASETS` in the embedded
 HTML; toggles regenerate automatically.
 
+The HTTP server starts listening immediately; the historical window is
+replayed in the background in 1h chunks, so the page loads instantly and the
+chart fills in progressively (even for large logs). `/api/mode` reports
+`{"mode","bootstrap"}` so the UI knows when the historical pass is complete
+and live tailing has begun. If the chart is empty, a banner explains whether
+it's a no-data state or a Chart.js load failure.
+
 ## Docker
 
 ### Build the image

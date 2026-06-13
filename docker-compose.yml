@@ -89,10 +89,13 @@ services:
         max-size: "10m"
         max-file: "3"
     healthcheck:
+      # The server starts listening immediately (bootstrap runs in the
+      # background), so "/" responds right away regardless of tick-log size.
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 20s
 
 volumes:
   polytr-data:
